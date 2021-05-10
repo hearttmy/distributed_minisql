@@ -12,18 +12,19 @@ server_path = "/servers/" + sys.argv[1]
 
 # 创建一个客户端，可以指定多台zookeeper，
 zk = KazooClient(hosts=hosts, logger=logging)
-
+flag = 0
 
 @zk.DataWatch(server_path + "/instruction")  # 当节点kazoo的数据变化时这个函数会被调用
 def watch_instruction_node(data, stat):
+    global flag
     # 如果节点被删除这个函数也会被调用，但是data和stat都是None
-    if stat and data and watch_instruction_node.flag:
+    if stat and data and flag:
         data_str = data.decode("utf-8")
         print("Version: %s, data: %s" % (stat.version, data_str))
         parser.parse(data_str)
         zookeeper_result(zk, server_path + "/result")
     else:
-        watch_instruction_node.flag = 1
+        flag = 1
         print("节点未初始化或已被删除")
 
 

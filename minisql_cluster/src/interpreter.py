@@ -138,7 +138,7 @@ def p_insert_statement(p):
         add_result('Error message: No table {}'.format(key_error))
     except Exception as ex:
         add_result('Insertion failed.')
-        add_result('Error message:  ', ex)
+        add_result('Error message:  ' + str(ex))
 
 
 def p_select_statement(p):
@@ -174,7 +174,7 @@ def p_delete_statement(p):
         try:
             MinisqlFacade.delete_record_all(p[1]['table_name'])
         except Exception as ex:
-            add_result('Error! ', ex)
+            add_result('Error! ' + str(ex))
     elif type_code == 'conditional_delete':
         MinisqlFacade.delete_record_conditionally(p[1]['table_name'], p[1]['conditions'])
 
@@ -189,14 +189,14 @@ def p_drop_statement(p):
         try:
             MinisqlFacade.drop_table(p[1]['table_name'])
         except ValueError as value_error:
-            add_result('Error! ', value_error)
+            add_result('Error! ' + str(value_error))
         except KeyError:
             add_result('Error! There is no table {}.'.format(p[1]['table_name']))
     elif type_code == 'drop_index':
         try:
             MinisqlFacade.drop_index(p[1]['index_name'])
         except Exception as ex:
-            add_result('Error! ', ex)
+            add_result('Error! ' + str(ex))
 
 
 def p_quit_statement(p):
