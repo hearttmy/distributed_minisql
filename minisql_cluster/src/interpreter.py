@@ -115,12 +115,14 @@ def p_create_statement(p):
     type_code = p[1]['type']
     if type_code == 'create_index':
         MinisqlFacade.create_index(p[1]['table_name'], p[1]['index_name'], p[1]['column_name'])
+        add_result('create index successfully!')
     elif type_code == 'create_table':
         try:
             if p[1]['primary']:
                 MinisqlFacade.create_table(p[1]['table_name'], p[1]['primary key'], p[1]['element_list'])
             else:
                 MinisqlFacade.create_table(p[1]['table_name'], None, p[1]['element_list'])
+            add_result('create table successfully!')
         except ValueError as value_error:
             add_result('Error! {}'.format(value_error))
 
@@ -133,6 +135,7 @@ def p_insert_statement(p):
     value_list = p[6]
     try:
         MinisqlFacade.insert_record(table_name, value_list)
+        add_result('insert successfully!')
     except KeyError as key_error:
         add_result('Insertion failed.')
         add_result('Error message: No table {}'.format(key_error))
@@ -173,10 +176,12 @@ def p_delete_statement(p):
     if type_code == 'delete_all':
         try:
             MinisqlFacade.delete_record_all(p[1]['table_name'])
+            add_result('delete all successfully!')
         except Exception as ex:
             add_result('Error! ' + str(ex))
     elif type_code == 'conditional_delete':
         MinisqlFacade.delete_record_conditionally(p[1]['table_name'], p[1]['conditions'])
+        add_result('delete successfully!')
 
 
 def p_drop_statement(p):
@@ -188,6 +193,7 @@ def p_drop_statement(p):
     if type_code == 'drop_table':
         try:
             MinisqlFacade.drop_table(p[1]['table_name'])
+            add_result('drop table successfully!')
         except ValueError as value_error:
             add_result('Error! ' + str(value_error))
         except KeyError:
@@ -195,6 +201,7 @@ def p_drop_statement(p):
     elif type_code == 'drop_index':
         try:
             MinisqlFacade.drop_index(p[1]['index_name'])
+            add_result('drop index successfully!')
         except Exception as ex:
             add_result('Error! ' + str(ex))
 
