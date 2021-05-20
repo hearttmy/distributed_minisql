@@ -7,11 +7,11 @@ from kazoo.client import KazooClient
 from interpreter import parser, zookeeper_result
 
 hosts = '172.16.238.2:2181,172.16.238.3:2182,172.16.238.4:2183'
-test_hosts = '127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183'
+#test_hosts = '127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183'
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 server_path = "/servers/" + sys.argv[1]
 # 创建一个客户端，可以指定多台zookeeper，
-zk = KazooClient(hosts=test_hosts, logger=logging)
+zk = KazooClient(hosts=hosts, logger=logging)
 
 
 def watch_instruction_children(children):
@@ -29,6 +29,7 @@ if __name__ == '__main__':
     # 开始心跳
     zk.start()
     zk.ensure_path('/tables')
+    zk.ensure_path('/indexes')
     zk.ensure_path("{}/tables".format(server_path))
     zk.ensure_path("{}/info".format(server_path))
     if not zk.exists("{}/info/recordNum".format(server_path)):

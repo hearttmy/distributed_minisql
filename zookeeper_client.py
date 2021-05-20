@@ -14,7 +14,7 @@ logging.basicConfig(level=logging.WARNING, stream=sys.stdout)
 zk = KazooClient(hosts=hosts, logger=logging)
 server_list = ["minisql1", "minisql2", "minisql3"]
 condition = Condition()
-dataWatchFinished = 1
+dataWatchFinished = 0
 
 
 def cmd_get_sql():
@@ -29,27 +29,60 @@ def cmd_get_sql():
             s = input()
 
 
-def get_min_records():
-    tmp = []
+def take_weight(elem):
+    return elem['weight']
+
+
+def get_create_table_server(num):
+    candidate = []
     for server in server_list:
-        tmp.append(zk.get("/servers/{}/info/recordNum".format(server)))
+        data1, stat1 = zk.get("/servers/{}/info/recordNum".format(server))
+        data_str1 = data1.decode('utf-8')
+        data2, stat2 = zk.get("/servers/{}/info/tableNum".format(server))
+        data_str2 = data2.decode('utf-8')
+        tmp = int(data_str1) + int(data_str2)
+        candidate.append({'server': server, 'weight': tmp})
+    candidate.sort(key=take_weight)
+    ans = []
+    for i in range(num):
+        ans.append(candidate[i]['server'])
+    return ans
 
 
-def get_min_tables():
-    tmp = []
-    for server in server_list:
-        tmp.append(zk.get("/servers/{}/info/tableNum".format(server)))
+def get_create_index_server():
+    pass
 
 
-def get_target_server(sql):
-    tmp = sql.lstrip(' ')
-    ans = ['minisql1']
-    if tmp[0] == 'create' and tmp[1] == 'table':  # backup
-        pass
-    elif tmp[0] == 'select':  # balancing
-        pass
+def get_select_server(table_name):
+    if not zk.exists("/tables/" + table_name):
+        return server_list
     else:
-        pass
+        ans = [zk.get_children("/tables/" + table_name)[0]]
+        return ans
+
+
+def get_normal_server(table_name):
+    if not zk.exists("/tables/" + table_name):
+        return server_list
+    else:
+        return zk.get_children("/tables/" + table_name)
+
+# modified
+def get_target_server(sql):
+    tmp = sql.lstrip(' ').split(' ')
+    ans = []
+    if tmp[0] == 'create':  # backup
+        if tmp[1] == 'table':
+            ans = get_create_table_server(2)
+        elif tmp[1] == 'index':
+            ans = get_create_index_server()
+    elif tmp[0] == 'select':  # balancing
+        if tmp[3][len(tmp[3]) - 1] == ';':
+            ans = get_select_server(tmp[3][:len(tmp[3]) - 1])
+        else:
+            ans = get_select_server(tmp[3])
+    else:
+        ans = get_normal_server(tmp[2])
     return ans
 
 
@@ -63,7 +96,7 @@ def get_path_list(target_server, sql):
     return ans
 
 
-def deleteFinishedNode(path_list):
+def delete_finished_node(path_list):
     for path in path_list:
         if zk.exists(path):
             zk.delete(path, recursive=True)
@@ -84,33 +117,52 @@ def watch_result_node(data, stat):
 
     if stat and data:
         dataWatchFinished += 1
+        condition.notify()
         data_str = data.decode("utf-8")
-        print("Result: \n" + data_str)
+        print("Result: \n" + data_str, end='')
 
-    condition.notify()
     condition.release()
 
 
 if __name__ == '__main__':
-    m = hashlib.sha256()
     zk.start()
     target_server = []
     path_list = []
-    node_name = 'test'
+    sql = ''
     while True:
         condition.acquire()
-        while dataWatchFinished != 1:
+        while dataWatchFinished != len(target_server):
+            # print('before wait', dataWatchFinished)
             condition.wait()
+            # print('after wait', dataWatchFinished)
 
-        deleteFinishedNode(path_list)
+        # modified
+        tmp = sql.lstrip(' ').split(' ')
+        if tmp[0] == 'create':
+            if tmp[1] == 'table':
+                for server in target_server:
+                    data, stat = zk.get('/servers/{}/info/tableNum'.format(server))
+                    num = int(data.decode('utf-8')) + 1
+                    zk.set('/servers/{}/info/tableNum'.format(server), bytes(str(num), encoding='utf-8'))
+                    zk.ensure_path('/tables/{}/{}'.format(tmp[2], server))
+            elif tmp[1] == 'index':
+                pass
+        elif tmp[0] == 'insert':
+            for server in target_server:
+                data, stat = zk.get('/servers/{}/info/recordNum'.format(server))
+                num = int(data.decode('utf-8')) + 1
+                zk.set('/servers/{}/info/recordNum'.format(server), bytes(str(num), encoding='utf-8'))
+
+
+        delete_finished_node(path_list)
 
         sql = cmd_get_sql()
         target_server = get_target_server(sql)
+        print(target_server)
         path_list = get_path_list(target_server, sql)
-        print(path_list)
-
-        # quit and file exec
-        set_sql_and_watchers(path_list, bytes(sql, encoding="utf-8"))
 
         dataWatchFinished = 0
+        # quit and file exec maybe
+        set_sql_and_watchers(path_list, bytes(sql, encoding="utf-8"))
+
         condition.release()
