@@ -16,7 +16,6 @@ zk = KazooClient(hosts=hosts, logger=logging)
 
 
 def watch_instruction_children(children):
-    print(children)
     for ch in children:
         data, stat = zk.get('{}/instructions/{}'.format(server_path, ch))
         if data and stat:
