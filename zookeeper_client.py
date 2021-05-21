@@ -1,6 +1,7 @@
 # -*- coding: UTF-8 -*-
 import hashlib
 import logging
+import math
 import random
 import sys
 import time
@@ -49,15 +50,26 @@ def get_create_table_server(num):
     return ans
 
 
-def get_create_index_server():
-    pass
+def get_create_index_server(table_name):
+    i = table_name.find('(')
+    if not i == -1:
+        table_name = table_name[:table_name.find('(')]
+    return get_normal_server(table_name)
+
+
+def get_drop_index_server(index_name):
+    if not zk.exists("/indexes/" + index_name):
+        return server_list
+    else:
+        ans = zk.get_children("/indexes/" + index_name)
+        return ans
 
 
 def get_select_server(table_name):
     if not zk.exists("/tables/" + table_name):
         return server_list
     else:
-        ans = [zk.get_children("/tables/" + table_name)[0]]
+        ans = [zk.get_children("/tables/" + table_name)[math.floor(random.random() * 2)]]
         return ans
 
 
@@ -67,6 +79,7 @@ def get_normal_server(table_name):
     else:
         return zk.get_children("/tables/" + table_name)
 
+
 # modified
 def get_target_server(sql):
     tmp = sql.lstrip(' ').split(' ')
@@ -75,12 +88,14 @@ def get_target_server(sql):
         if tmp[1] == 'table':
             ans = get_create_table_server(2)
         elif tmp[1] == 'index':
-            ans = get_create_index_server()
+            ans = get_create_index_server(tmp[4])
     elif tmp[0] == 'select':  # balancing
         if tmp[3][len(tmp[3]) - 1] == ';':
             ans = get_select_server(tmp[3][:len(tmp[3]) - 1])
         else:
             ans = get_select_server(tmp[3])
+    elif tmp[0] == 'drop' and tmp[1] == 'index':
+        ans = get_drop_index_server(tmp[2])
     else:
         ans = get_normal_server(tmp[2])
     return ans
@@ -135,24 +150,6 @@ if __name__ == '__main__':
             # print('before wait', dataWatchFinished)
             condition.wait()
             # print('after wait', dataWatchFinished)
-
-        # modified
-        tmp = sql.lstrip(' ').split(' ')
-        if tmp[0] == 'create':
-            if tmp[1] == 'table':
-                for server in target_server:
-                    data, stat = zk.get('/servers/{}/info/tableNum'.format(server))
-                    num = int(data.decode('utf-8')) + 1
-                    zk.set('/servers/{}/info/tableNum'.format(server), bytes(str(num), encoding='utf-8'))
-                    zk.ensure_path('/tables/{}/{}'.format(tmp[2], server))
-            elif tmp[1] == 'index':
-                pass
-        elif tmp[0] == 'insert':
-            for server in target_server:
-                data, stat = zk.get('/servers/{}/info/recordNum'.format(server))
-                num = int(data.decode('utf-8')) + 1
-                zk.set('/servers/{}/info/recordNum'.format(server), bytes(str(num), encoding='utf-8'))
-
 
         delete_finished_node(path_list)
 
