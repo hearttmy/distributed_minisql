@@ -143,7 +143,7 @@ if __name__ == '__main__':
     zk.start()
     target_server = []
     path_list = []
-    sql = ''
+    sql_input = ''
     while True:
         condition.acquire()
         while dataWatchFinished != len(target_server):
@@ -153,13 +153,13 @@ if __name__ == '__main__':
 
         delete_finished_node(path_list)
 
-        sql = cmd_get_sql()
-        target_server = get_target_server(sql)
+        sql_input = cmd_get_sql()
+        target_server = get_target_server(sql_input)
         print(target_server)
-        path_list = get_path_list(target_server, sql)
+        path_list = get_path_list(target_server, sql_input)
 
         dataWatchFinished = 0
         # quit and file exec maybe
-        set_sql_and_watchers(path_list, bytes(sql, encoding="utf-8"))
+        set_sql_and_watchers(path_list, bytes(sql_input, encoding="utf-8"))
 
         condition.release()

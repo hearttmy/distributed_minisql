@@ -4,7 +4,7 @@ from time import sleep
 
 from kazoo.client import KazooClient
 
-from interpreter import parser, zookeeper_result, result
+from interpreter import parser, zookeeper_result
 
 hosts = '172.16.238.2:2181,172.16.238.3:2182,172.16.238.4:2183'
 # test_hosts = '127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183'
@@ -21,8 +21,7 @@ def watch_instruction_children(children):
         if data and stat:
             data_str = data.decode('utf-8')
             parser.parse(data_str)
-            if result == ' ':
-                update_info(data_str)
+            update_info(data_str)
             zk.ensure_path('{}/instructions/{}/result'.format(server_path, ch))
             zookeeper_result(zk, '{}/instructions/{}/result'.format(server_path, ch))
 
