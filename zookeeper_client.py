@@ -3,6 +3,7 @@ import hashlib
 import logging
 import math
 import random
+import re
 import sys
 import time
 from threading import Condition
@@ -82,18 +83,15 @@ def get_normal_server(table_name):
 
 # modified
 def get_target_server(sql):
-    tmp = sql.lstrip(' ').split(' ')
+    tmp = re.sub(r'[;()]', ' ', sql).strip(' ').split()
     ans = []
     if tmp[0] == 'create':  # backup
         if tmp[1] == 'table':
             ans = get_create_table_server(2)
         elif tmp[1] == 'index':
-            ans = get_create_index_server(tmp[4])
+            ans = get_normal_server(tmp[4])
     elif tmp[0] == 'select':  # balancing
-        if tmp[3][len(tmp[3]) - 1] == ';':
-            ans = get_select_server(tmp[3][:len(tmp[3]) - 1])
-        else:
-            ans = get_select_server(tmp[3])
+        ans = get_select_server(tmp[3])
     elif tmp[0] == 'drop' and tmp[1] == 'index':
         ans = get_drop_index_server(tmp[2])
     else:
@@ -134,7 +132,7 @@ def watch_result_node(data, stat):
         dataWatchFinished += 1
         condition.notify()
         data_str = data.decode("utf-8")
-        print("Result: \n" + data_str, end='')
+        print(data_str)
 
     condition.release()
 

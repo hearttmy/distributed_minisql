@@ -116,6 +116,7 @@ def p_create_statement(p):
     if type_code == 'create_index':
         MinisqlFacade.create_index(p[1]['table_name'], p[1]['index_name'], p[1]['column_name'])
         add_result('create index successfully!')
+        set_result_flag()
     elif type_code == 'create_table':
         try:
             if p[1]['primary']:
@@ -123,6 +124,7 @@ def p_create_statement(p):
             else:
                 MinisqlFacade.create_table(p[1]['table_name'], None, p[1]['element_list'])
             add_result('create table successfully!')
+            set_result_flag()
         except ValueError as value_error:
             add_result('Error! {}'.format(value_error))
 
@@ -136,6 +138,7 @@ def p_insert_statement(p):
     try:
         MinisqlFacade.insert_record(table_name, value_list)
         add_result('insert successfully!')
+        set_result_flag()
     except KeyError as key_error:
         add_result('Insertion failed.')
         add_result('Error message: No table {}'.format(key_error))
@@ -163,6 +166,7 @@ def p_select_statement(p):
         for record in records:
             record_str = ' | '.join(str(item) for item in record)
             add_result(record_str)
+        set_result_flag()
     except KeyError:
         add_result('Error! The table {} is not exist!'.format(p[1]['table_name']))
 
@@ -177,11 +181,13 @@ def p_delete_statement(p):
         try:
             MinisqlFacade.delete_record_all(p[1]['table_name'])
             add_result('delete all successfully!')
+            set_result_flag()
         except Exception as ex:
             add_result('Error! ' + str(ex))
     elif type_code == 'conditional_delete':
         MinisqlFacade.delete_record_conditionally(p[1]['table_name'], p[1]['conditions'])
         add_result('delete successfully!')
+        set_result_flag()
 
 
 def p_drop_statement(p):
@@ -194,6 +200,7 @@ def p_drop_statement(p):
         try:
             MinisqlFacade.drop_table(p[1]['table_name'])
             add_result('drop table successfully!')
+            set_result_flag()
         except ValueError as value_error:
             add_result('Error! ' + str(value_error))
         except KeyError:
@@ -202,6 +209,7 @@ def p_drop_statement(p):
         try:
             MinisqlFacade.drop_index(p[1]['index_name'])
             add_result('drop index successfully!')
+            set_result_flag()
         except Exception as ex:
             add_result('Error! ' + str(ex))
 
@@ -452,17 +460,34 @@ def cmd_get_sql():
 
 
 result = bytearray()
+result_flag = False
+
+
+def set_result_flag():
+    global result_flag
+    result_flag = True
+
+def get_result_flag():
+    global result_flag
+    return result_flag
+
 
 def add_result(s):
     global result
     result += bytearray(s + "\n", encoding="utf-8")
 
-
-def zookeeper_result(zk, result_path):
+def get_result():
     global result
-    zk.set(result_path, bytes(result))
+    return result
+
+def clear_result():
+    global result
     result = bytearray()
 
+def zookeeper_result(zk, result_path, server_name):
+    global result
+    zk.set(result_path, bytes(bytearray(server_name + ":\n", encoding="utf-8") + result))
+    result = bytearray()
 
 
 if __name__ == '__main__':
