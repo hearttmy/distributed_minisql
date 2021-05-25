@@ -22,6 +22,7 @@ server_num = 0
 server_list = []
 
 
+# 删除断线服务器相关节点
 def delete_server_node(offline_server_name):
     zk.delete('/servers/{}'.format(offline_server_name), recursive=True)
     tables = zk.get_children('{}/tables'.format(server_path))
@@ -30,6 +31,7 @@ def delete_server_node(offline_server_name):
             zk.delete('/tables/{}/{}'.format(table, offline_server_name))
 
 
+# 确定复制到哪台服务器
 def copy_server(offline_server_name):
     table_list = zk.get_children('/tables')
     remained_server_list = server_list[:]
@@ -42,7 +44,9 @@ def copy_server(offline_server_name):
             copy_table(table, remained_server_list[random_index])
 
 
+# 生成复制一张表的所有指令，并写入目标服务器
 def copy_table(table_name, target_server_name):
+    # 生成create相关指令
     instruction_name_list = zk.get_children('{}/tables/{}'.format(server_path, table_name))
     instruction_list = []
     for instruction_name in instruction_name_list:
@@ -50,6 +54,7 @@ def copy_table(table_name, target_server_name):
 
         instruction_list.append(
             {'name': instruction_name, 'content': bytes('copy ' + data.decode('utf-8'), encoding='utf-8')})
+    # 生成insert相关指令
     parser.parse('select * from {};'.format(table_name))
     result = get_result()
     clear_result()
@@ -71,6 +76,7 @@ def copy_table(table_name, target_server_name):
         zk.create('/servers/{}/instructions/{}'.format(target_server_name, instruction['name']), instruction['content'])
 
 
+# 监听是否有服务器断线
 def watch_server_party(children):
     global server_num
     global server_list
@@ -89,31 +95,37 @@ def watch_server_party(children):
             if server not in cur_server_list:
                 copy_server(server)
                 delete_server_node(server)
+        server_list = cur_server_list[:]
 
 
 def watch_instruction_children(children):
-    print(children)
     for ch in children:
         data, stat = zk.get('{}/instructions/{}'.format(server_path, ch))
+        # copy_flag 用于判断是否是容错容灾导致的表复制
         copy_flag = False
         if data and stat:
             data_str = data.decode('utf-8')
             print(data_str)
+            # 指令以copy起始代表跟容错容灾相关
             if data_str.find('copy') == 0:
                 copy_flag = True
                 data_str = data_str.replace('copy', '')
             parser.parse(data_str)
+            # 如果执行成功，更新相关信息 /info
             if get_result_flag():
                 update_info(data_str, ch)
+            # 如果是容错容灾相关，则不需要写回结果，直接删除指令节点
             if copy_flag:
                 zk.delete('{}/instructions/{}'.format(server_path, ch), recursive=True)
                 print(get_result())
                 clear_result()
+            # 正常情况下，需要写回指令
             else:
                 zk.ensure_path('{}/instructions/{}/result'.format(server_path, ch))
                 zookeeper_result(zk, '{}/instructions/{}/result'.format(server_path, ch), server_name)
 
 
+# 处理各种指令导致的信息更新，delete由于minisql的问题还不完善
 def update_info(sql, node_name):
     tmp = re.sub(r'[;()]', ' ', sql).strip(' ').split()
     if tmp[0] == 'create':
@@ -154,12 +166,13 @@ def update_info(sql, node_name):
 if __name__ == '__main__':
     # 开始心跳
     zk.start()
+    # party部分，用于检测服务器断线情况
     zk.ensure_path('/party')
     zk.ChildrenWatch('/party', watch_server_party)
-
     party = zk.Party('/party', server_name)
     party.join()
 
+    # 构建zookeeper结构
     zk.ensure_path('/tables')
     zk.ensure_path('/indexes')
     zk.ensure_path("{}/tables".format(server_path))
@@ -171,6 +184,7 @@ if __name__ == '__main__':
         zk.create("{}/info/tableNum".format(server_path), b'0')
     zk.delete("{}/instructions".format(server_path), recursive=True)
     zk.ensure_path("{}/instructions".format(server_path))
+    # 监听指令节点
     zk.ChildrenWatch(server_path + "/instructions", watch_instruction_children)
 
     while True:

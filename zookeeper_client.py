@@ -17,6 +17,8 @@ zk = KazooClient(hosts=hosts, logger=logging)
 server_list = ["minisql1", "minisql2", "minisql3"]
 condition = Condition()
 dataWatchFinished = 0
+condition_for_file = Condition()
+dataWatchFinished_for_file = 0
 
 
 def cmd_get_sql():
@@ -31,6 +33,48 @@ def cmd_get_sql():
             s = input()
 
 
+# 脚本执行的配套监听函数
+def watch_result_node_for_file(data, stat):
+    global dataWatchFinished_for_file
+    if stat and data:
+        condition_for_file.acquire()
+        data_str = data.decode("utf-8")
+        print(data_str)
+        dataWatchFinished_for_file += 1
+        condition_for_file.notify()
+        condition_for_file.release()
+
+
+# 执行一条文件中的sql命令
+def execute_one_sql(sql):
+    global dataWatchFinished_for_file
+    condition_for_file.acquire()
+    dataWatchFinished_for_file = 0
+    target_server = get_target_server(sql)
+    print(target_server)
+    path_list = get_path_list(target_server, sql)
+    set_sql_and_watchers(path_list, bytes(sql, encoding="utf-8"), watch_result_node_for_file)
+    while dataWatchFinished_for_file != len(target_server):
+        condition_for_file.wait()
+    delete_finished_node(path_list)
+    condition_for_file.release()
+
+
+# 执行整个脚本文件
+def execute_file(filename):
+    with open(filename, 'r') as file:
+        lines = (line.strip() for line in file.readlines())
+        sql = ''
+        for line in lines:
+            if line.rstrip().endswith(';'):
+                sql += ' ' + line
+                execute_one_sql(sql)
+                sql = ''
+            else:
+                sql += ' ' + line
+
+
+# 排序辅助函数
 def take_weight(elem):
     return elem['weight']
 
@@ -81,7 +125,7 @@ def get_normal_server(table_name):
         return zk.get_children("/tables/" + table_name)
 
 
-# modified
+# 获取应该写入的服务器列表
 def get_target_server(sql):
     tmp = re.sub(r'[;()]', ' ', sql).strip(' ').split()
     ans = []
@@ -99,6 +143,7 @@ def get_target_server(sql):
     return ans
 
 
+# 根据随机数，指令，时间哈希生成节点名，返回路径列表
 def get_path_list(target_server, sql):
     ans = []
     m = hashlib.sha256()
@@ -115,26 +160,25 @@ def delete_finished_node(path_list):
             zk.delete(path, recursive=True)
 
 
-def set_sql_and_watchers(path_list, sql):
+# 写入指令， 同时监听result节点
+def set_sql_and_watchers(path_list, sql, watch_function):
     for path in path_list:
         zk.create(path, sql)
         zk.ensure_path(path + '/result')
-        zk.DataWatch(path + '/result', watch_result_node)
+        zk.DataWatch(path + '/result', watch_function)
 
 
 # 当节点kazoo的数据变化时这个函数会被调用
 # 如果节点被删除这个函数也会被调用，但是data和stat都是None
 def watch_result_node(data, stat):
     global dataWatchFinished
-    condition.acquire()
-
     if stat and data:
-        dataWatchFinished += 1
-        condition.notify()
+        condition.acquire()
         data_str = data.decode("utf-8")
         print(data_str)
-
-    condition.release()
+        dataWatchFinished += 1
+        condition.notify()
+        condition.release()
 
 
 if __name__ == '__main__':
@@ -144,20 +188,28 @@ if __name__ == '__main__':
     sql_input = ''
     while True:
         condition.acquire()
-        while dataWatchFinished != len(target_server):
-            # print('before wait', dataWatchFinished)
-            condition.wait()
-            # print('after wait', dataWatchFinished)
-
-        delete_finished_node(path_list)
-
-        sql_input = cmd_get_sql()
-        target_server = get_target_server(sql_input)
-        print(target_server)
-        path_list = get_path_list(target_server, sql_input)
-
         dataWatchFinished = 0
-        # quit and file exec maybe
-        set_sql_and_watchers(path_list, bytes(sql_input, encoding="utf-8"))
-
+        # 读取sql指令
+        sql_input = cmd_get_sql()
+        sql_tmp = sql_input.replace(';', '').strip().split()
+        # 如果是文件处理，转处理函数
+        if sql_tmp[0] == 'exec':
+            execute_file(sql_tmp[1])
+            target_server.clear()
+            path_list.clear()
+            dataWatchFinished = 0
+        # 一般指令
+        else:
+            # 获取应该写入的服务器列表
+            target_server = get_target_server(sql_input)
+            print(target_server)
+            # 生成具体zookeeper路径，指令节点名由哈希获得
+            path_list = get_path_list(target_server, sql_input)
+            # 写入指令， 同时监听result节点
+            set_sql_and_watchers(path_list, bytes(sql_input, encoding="utf-8"), watch_result_node)
+        # 等待所有服务器返回结果
+        while dataWatchFinished != len(target_server):
+            condition.wait()
+        # 删除指令节点
+        delete_finished_node(path_list)
         condition.release()
