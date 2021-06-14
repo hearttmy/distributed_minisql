@@ -79,7 +79,9 @@ def take_weight(elem):
     return elem['weight']
 
 
-def get_create_table_server(num):
+def get_create_table_server(num, table_name):
+    if zk.exists("/tables/" + table_name):
+        return zk.get_children("/tables/" + table_name)
     candidate = []
     for server in server_list:
         data1, stat1 = zk.get("/servers/{}/info/recordNum".format(server))
@@ -104,7 +106,8 @@ def get_create_index_server(table_name):
 
 def get_drop_index_server(index_name):
     if not zk.exists("/indexes/" + index_name):
-        return server_list
+        print('Index not exists.')
+        return []
     else:
         ans = zk.get_children("/indexes/" + index_name)
         return ans
@@ -112,7 +115,8 @@ def get_drop_index_server(index_name):
 
 def get_select_server(table_name):
     if not zk.exists("/tables/" + table_name):
-        return server_list
+        print('Table not exists.')
+        return []
     else:
         ans = [zk.get_children("/tables/" + table_name)[math.floor(random.random() * 2)]]
         return ans
@@ -120,7 +124,8 @@ def get_select_server(table_name):
 
 def get_normal_server(table_name):
     if not zk.exists("/tables/" + table_name):
-        return server_list
+        print('Table not exists.')
+        return []
     else:
         return zk.get_children("/tables/" + table_name)
 
@@ -131,7 +136,7 @@ def get_target_server(sql):
     ans = []
     if tmp[0] == 'create':  # backup
         if tmp[1] == 'table':
-            ans = get_create_table_server(2)
+            ans = get_create_table_server(2, tmp[2])
         elif tmp[1] == 'index':
             ans = get_normal_server(tmp[4])
     elif tmp[0] == 'select':  # balancing
